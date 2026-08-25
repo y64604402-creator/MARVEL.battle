@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PILLAR RUMBLE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sky-top:#8FD3FF;
+    --sky-bottom:#D9F1FF;
+    --accent-yellow:#FFD23F;
+    --accent-red:#FF5C5C;
+    --accent-teal:#3FD6C2;
+    --accent-purple:#8B6BFF;
+    --ui-dark:#1F2740;
+    --ui-dark-90: rgba(31,39,64,0.90);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    font-family:'Baloo 2', sans-serif;
+    background:linear-gradient(to bottom, var(--sky-top), var(--sky-bottom));
+    touch-action:none;
+  }
+  #canvas-holder{position:fixed; inset:0;}
+  canvas{display:block; width:100%; height:100%;}
+
+  /* ---------- Top HUD ---------- */
+  #hud-top{
+    position:fixed; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding: calc(10px + env(safe-area-inset-top)) 16px 0 16px;
+    pointer-events:none; z-index:10;
+  }
+  .hud-pill{
+    background:var(--ui-dark-90);
+    color:#fff;
+    padding:8px 16px;
+    border-radius:999px;
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.5px;
+    box-shadow:0 4px 0 rgba(0,0,0,0.15);
+    display:flex; align-items:center; gap:8px;
+  }
+  .hud-pill .dot{width:10px;height:10px;border-radius:50%;background:var(--accent-teal);box-shadow:0 0 8px var(--accent-teal);}
+  #alive-list{display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:46vw;}
+  .alive-chip{width:22px;height:22px;border-radius:7px;border:2px solid rgba(255,255,255,0.85); box-shadow:0 2px 0 rgba(0,0,0,0.2);}
+  .alive-chip.dead{opacity:0.18; filter:grayscale(1);}
+
+  /* ---------- Center banner ---------- */
+  #banner{
+    position:fixed; left:50%; top:32%; transform:translate(-50%,-50%) scale(0.7);
+    text-align:center; z-index:20; pointer-events:none;
+    opacity:0; transition:opacity 0.25s ease, transform 0.25s ease;
+  }
+  #banner.show{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  #banner h1{
+    margin:0; font-size:54px; font-weight:800; letter-spacing:1px;
+    color:#fff; -webkit-text-stroke:3px var(--ui-dark);
+    text-shadow:0 6px 0 rgba(0,0,0,0.25);
+  }
+  #banner p{
+    margin:6px 0 0; font-size:20px; font-weight:700; color:var(--ui-dark);
+    background:rgba(255,255,255,0.85); display:inline-block; padding:4px 18px; border-radius:999px;
+  }
+  #banner.winner h1{ color: var(--winner-color, #fff); }
+
+  #countdown{
+    position:fixed; left:50%; top:14%; transform:translateX(-50%);
+    font-size:22px; font-weight:700; color:var(--ui-dark);
+    background:rgba(255,255,255,0.85); padding:6px 20px; border-radius:999px;
+    z-index:19; opacity:0; transition:opacity 0.2s;
+  }
+  #countdown.show{opacity:1;}
+
+  #you-fell{
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    font-size:32px; font-weight:800; color:#fff; -webkit-text-stroke:2px var(--accent-red);
+    z-index:20; opacity:0; transition:opacity 0.3s; pointer-events:none;
+    background:var(--ui-dark-90); padding:14px 28px; border-radius:20px;
+  }
+  #you-fell.show{opacity:1;}
+
+  /* ---------- Controls ---------- */
+  #controls{position:fixed; inset:0; z-index:15; pointer-events:none;}
+  .stick-zone{
+    position:absolute; left:0; bottom:0; width:46%; height:60%;
+    pointer-events:auto;
+  }
+  #joy-base{
+    position:absolute; width:130px; height:130px; border-radius:50%;
+    background:rgba(31,39,64,0.28);
+    border:3px solid rgba(255,255,255,0.55);
+    left: calc(24px + env(safe-area-inset-left));
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    transition:background 0.15s, border-color 0.15s;
+  }
+  #joy-base.active{
+    background:rgba(31,39,64,0.48);
+    border-color:rgba(255,255,255,0.95);
+  }
+  #joy-knob{
+    position:absolute; width:56px; height:56px; border-radius:50%;
+    background:rgba(255,255,255,0.92);
+    border:3px solid var(--accent-teal);
+    left:37px; top:37px;
+    box-shadow:0 3px 0 rgba(0,0,0,0.2);
+    transition:box-shadow 0.15s;
+  }
+  #joy-base.active #joy-knob{
+    box-shadow:0 3px 0 rgba(0,0,0,0.2), 0 0 0 6px rgba(63,214,194,0.28);
+  }
+  #action-zone{
+    position:absolute; right:0; bottom:0; width:52%; height:60%;
+    pointer-events:none;
+  }
+  .action-btn{
+    position:absolute; border-radius:50%; pointer-events:auto;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:15px; color:#fff;
+    box-shadow:0 6px 0 rgba(0,0,0,0.25);
+    transition:transform 0.06s ease, box-shadow 0.06s ease;
+    border:3px solid rgba(255,255,255,0.75);
+    letter-spacing:0.5px;
+  }
+  .action-btn:active, .action-btn.pressed{
+    transform:translateY(4px); box-shadow:0 2px 0 rgba(0,0,0,0.25);
+  }
+  #btn-jump{
+    width:92px; height:92px;
+    right: calc(20px + env(safe-area-inset-right));
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    background:radial-gradient(circle at 35% 30%, #5CE0CB, var(--accent-teal));
+  }
+  #btn-attack{
+    width:82px; height:82px;
+    right: calc(120px + env(safe-area-inset-right));
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    background:radial-gradient(circle at 35% 30%, #FF8A8A, var(--accent-red));
+  }
+
+  #start-overlay{
+    position:fixed; inset:0; z-index:30;
+    background:linear-gradient(160deg, #6FC3F7, #B9E7FF);
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+    text-align:center; padding:28px 24px 40px;
+    overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;
+  }
+  #start-overlay h1{
+    font-size:44px; font-weight:800; color:#fff; margin:0 0 6px;
+    -webkit-text-stroke:3px var(--ui-dark); text-shadow:0 6px 0 rgba(0,0,0,0.2);
+  }
+  #start-overlay p{ font-size:16px; color:var(--ui-dark); font-weight:700; max-width:340px; margin:4px 0 22px;}
+  #start-btn{
+    font-family:inherit; font-size:22px; font-weight:800; color:#fff;
+    background:linear-gradient(180deg, #FFDE6B, var(--accent-yellow));
+    border:3px solid rgba(255,255,255,0.8); border-radius:999px;
+    padding:16px 46px; box-shadow:0 6px 0 rgba(0,0,0,0.25);
+    cursor:pointer;
+  }
+  #start-btn:active{transform:translateY(4px); box-shadow:0 2px 0 rgba(0,0,0,0.25);}
+  #name-row, #room-row{ width:100%; max-width:320px; margin:0 0 10px; text-align:left; }
+  .input-label{ display:block; font-size:12px; font-weight:800; color:var(--ui-dark); margin:0 0 4px 6px; }
+  #name-input, #room-input{
+    width:100%; font-family:inherit; font-size:16px; font-weight:700;
+    color:var(--ui-dark); text-align:center;
+    background:rgba(255,255,255,0.85); border:3px solid rgba(255,255,255,0.9);
+    border-radius:999px; padding:10px 16px; outline:none;
+  }
+  #name-input:focus, #room-input:focus{ border-color:var(--accent-teal); }
+  #mode-buttons{ display:flex; flex-direction:column; gap:10px; width:100%; max-width:320px; margin-top:4px; }
+  .mode-btn{
+    font-family:inherit; font-size:19px; font-weight:800; color:#fff;
+    border:3px solid rgba(255,255,255,0.8); border-radius:999px;
+    padding:15px 20px; box-shadow:0 6px 0 rgba(0,0,0,0.25); cursor:pointer;
+  }
+  .mode-btn:active{transform:translateY(4px); box-shadow:0 2px 0 rgba(0,0,0,0.25);}
+  .mode-btn.online{ background:linear-gradient(180deg, #5AC8FA, var(--accent-teal)); }
+  .mode-btn.offline{ background:linear-gradient(180deg, #FFDE6B, var(--accent-yellow)); color:var(--ui-dark);}
+  #online-note{
+    font-size:11.5px; color:rgba(31,39,64,0.7); font-weight:700;
+    max-width:300px; margin:10px 0 0; line-height:1.5;
+  }
+  .hint-row{display:flex; gap:14px; margin-top:22px; flex-wrap:wrap; justify-content:center;}
+  .hint{background:rgba(255,255,255,0.7); border-radius:14px; padding:10px 14px; font-size:13px; font-weight:700; color:var(--ui-dark); width:130px;}
+
+  #net-note{
+    position:fixed; bottom:6px; left:50%; transform:translateX(-50%);
+    font-size:11px; color:rgba(31,39,64,0.55); font-weight:700; z-index:5; pointer-events:none;
+    text-align:center; width:90%;
+  }
+
+  /* ---------- Lobby / waiting room ---------- */
+  #lobby-overlay{
+    position:fixed; inset:0; z-index:30; display:none;
+    background:linear-gradient(160deg, #6FC3F7, #B9E7FF);
+    flex-direction:column; align-items:center; justify-content:flex-start;
+    text-align:center; padding:28px 24px 40px;
+    overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;
+  }
+  #lobby-overlay h1{
+    font-size:36px; font-weight:800; color:#fff; margin:0 0 4px;
+    -webkit-text-stroke:3px var(--ui-dark); text-shadow:0 6px 0 rgba(0,0,0,0.2);
+  }
+  #lobby-room-label{
+    font-size:15px; font-weight:800; color:var(--ui-dark);
+    background:rgba(255,255,255,0.8); padding:4px 16px; border-radius:999px;
+    margin:0 0 18px; display:inline-block;
+  }
+  #lobby-players{
+    display:flex; flex-direction:column; gap:8px; width:100%; max-width:300px; margin-bottom:8px;
+  }
+  .lobby-player-row{
+    display:flex; align-items:center; gap:10px;
+    background:rgba(255,255,255,0.85); border-radius:14px; padding:9px 14px;
+    font-size:15px; font-weight:700; color:var(--ui-dark); text-align:left;
+  }
+  .lobby-dot{ width:20px; height:20px; border-radius:50%; border:2px solid rgba(255,255,255,0.9); flex-shrink:0; box-shadow:0 2px 0 rgba(0,0,0,0.15); }
+  #lobby-count{ font-size:13px; font-weight:700; color:var(--ui-dark); opacity:0.75; margin:0 0 18px; }
+  #lobby-idle{ width:100%; max-width:300px; display:flex; flex-direction:column; align-items:center; }
+  #lobby-start-btn:disabled{ opacity:0.55; cursor:default; }
+  #lobby-wait-msg{ display:none; font-size:15px; font-weight:800; color:var(--ui-dark); background:rgba(255,255,255,0.75); padding:12px 18px; border-radius:14px; margin:0; }
+  #lobby-countdown{
+    display:none; font-size:40px; font-weight:800; color:#fff;
+    -webkit-text-stroke:2px var(--accent-red); text-shadow:0 5px 0 rgba(0,0,0,0.2);
+    margin-top:6px;
+  }
+  .lobby-hint{ font-size:11.5px; color:rgba(31,39,64,0.65); font-weight:700; max-width:300px; margin-top:20px; line-height:1.5; }
+</style>
+</head>
+<body>
+
+<div id="canvas-holder"></div>
+
+<div id="hud-top">
+  <div class="hud-pill"><span class="dot"></span><span id="round-label">ROUND 1</span></div>
+  <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px; pointer-events:none;">
+    <div class="hud-pill" id="net-chip" style="display:none;"></div>
+    <div id="alive-list"></div>
+  </div>
+</div>
+
+<div id="countdown"></div>
+<div id="banner"><h1 id="banner-title">WINNER!</h1><p id="banner-sub"></p></div>
+<div id="you-fell">脱落しました…</div>
+
+<div id="controls">
+  <div class="stick-zone" id="stick-zone">
+    <div id="joy-base"><div id="joy-knob"></div></div>
+  </div>
+  <div id="action-zone">
+    <div class="action-btn" id="btn-attack">ATTACK</div>
+    <div class="action-btn" id="btn-jump">JUMP</div>
+  </div>
+</div>
+
+<div id="start-overlay">
+  <h1>PILLAR RUMBLE</h1>
+  <p>柱の上で戦って、最後まで生き残ろう!落ちたら脱落。</p>
+
+  <div id="name-row">
+    <label class="input-label" for="name-input">なまえ</label>
+    <input id="name-input" type="text" maxlength="10" placeholder="なまえ(10文字まで)">
+  </div>
+  <div id="room-row">
+    <label class="input-label" for="room-input">ルームコード(オンライン対戦用)</label>
+    <input id="room-input" type="text" maxlength="16" placeholder="ルームコード" value="LOBBY">
+  </div>
+
+  <div id="mode-buttons">
+    <button id="start-btn-online" class="mode-btn online">🌐 オンライン対戦</button>
+    <button id="start-btn-offline" class="mode-btn offline">🤖 ボットと練習</button>
+  </div>
+  <p id="online-note">同じルームコードを入力した人と、この画面(アーティファクト)を開いている人同士で対戦できます。なまえ・色・位置は同じルームの人に共有されます。</p>
+
+  <div class="hint-row">
+    <div class="hint">🕹️ 左下のスティックで移動</div>
+    <div class="hint">👆 画面スワイプで視点回転</div>
+    <div class="hint">👊 ATTACKで相手を吹き飛ばそう</div>
+  </div>
+</div>
+
+<div id="lobby-overlay">
+  <h1>PILLAR RUMBLE</h1>
+  <p id="lobby-room-label">ルーム: LOBBY</p>
+
+  <div id="lobby-players"></div>
+  <p id="lobby-count">1人参加中</p>
+
+  <div id="lobby-idle">
+    <button id="lobby-start-btn" class="mode-btn online">あと1人以上待っています…</button>
+    <p id="lobby-wait-msg">ホストの開始を待っています…</p>
+  </div>
+  <div id="lobby-countdown">10秒後にスタート!</div>
+
+  <p class="lobby-hint">部屋を最初に開いた人がホストになります。ホストが「ゲームを開始する」を押すと、全員同時に10秒後スタートします。</p>
+</div>
+
+<div id="net-note"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   PILLAR RUMBLE - simple Roblox-like 3D arena battler
+   Single player vs bots, local physics. (see note at bottom of file
+   about multiplayer)
+   ========================================================================= */
+
+/* ---------------- Renderer / Scene / Camera ---------------- */
+const holder = document.getElementById('canvas-holder');
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+holder.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9AD8FF);
+scene.fog = new THREE.Fog(0x9AD8FF, 60, 160);
+
+const camera = new THREE.PerspectiveCamera(62, innerWidth/innerHeight, 0.1, 400);
+
+function resize(){
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------------- Lights ---------------- */
+const hemi = new THREE.HemisphereLight(0xffffff, 0x6688aa, 0.95);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xfff3d6, 1.15);
+sun.position.set(30, 45, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left = -45; sun.shadow.camera.right = 45;
+sun.shadow.camera.top = 45; sun.shadow.camera.bottom = -45;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 120;
+sun.shadow.bias = -0.0015;
+scene.add(sun);
+
+/* ---------------- Void / ground way below ---------------- */
+const FALL_Y = -22;         // below this = eliminated
+const VOID_Y = -34;
+
+const voidGeo = new THREE.PlaneGeometry(400,400);
+const voidMat = new THREE.MeshStandardMaterial({color:0x1a2740, roughness:1});
+const voidPlane = new THREE.Mesh(voidGeo, voidMat);
+voidPlane.rotation.x = -Math.PI/2;
+voidPlane.position.y = VOID_Y;
+voidPlane.receiveShadow = true;
+scene.add(voidPlane);
+
+// faint grid on the void floor so the fall reads as "far down"
+const grid = new THREE.GridHelper(400, 40, 0x33507a, 0x243a5c);
+grid.position.y = VOID_Y + 0.05;
+scene.add(grid);
+
+/* ---------------- Platforms (pillars) ---------------- */
+// safety-stripe ring texture (procedural) for platform edges
+function makeStripeTexture(colA, colB){
+  const c = document.createElement('canvas'); c.width=64; c.height=64;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = colA; ctx.fillRect(0,0,64,64);
+  ctx.fillStyle = colB;
+  for(let i=-64;i<64;i+=16){
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(i,0); ctx.lineTo(i+8,0); ctx.lineTo(i+8+64,64); ctx.lineTo(i+64,64);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+const stripeTex = makeStripeTexture('#FFD23F','#1F2740');
+
+const platforms = []; // {mesh, x, z, radius, topY}
+
+function addPlatform(x, z, radius, height, color, opts){
+  opts = opts||{};
+  const topY = height;
+  const geo = new THREE.CylinderGeometry(radius, radius*1.03, height, 28);
+  const mat = new THREE.MeshStandardMaterial({color, roughness:0.75, metalness:0.05});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, height/2, z);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  // top cap accent disc
+  const capGeo = new THREE.CylinderGeometry(radius*0.99, radius*0.99, 0.15, 28);
+  const capMat = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.5, emissive:0x111111});
+  const cap = new THREE.Mesh(capGeo, capMat);
+  cap.position.set(x, height + 0.08, z);
+  cap.receiveShadow = true;
+  scene.add(cap);
+
+  // caution stripe ring at the edge (signature visual detail)
+  const stripeGeo = new THREE.TorusGeometry(radius*0.99, 0.16, 8, 40);
+  const stripeTexClone = stripeTex.clone(); stripeTexClone.needsUpdate = true;
+  stripeTexClone.repeat.set(Math.max(4, Math.round(radius*2)), 1);
+  const stripeMat = new THREE.MeshStandardMaterial({map:stripeTexClone, roughness:0.6});
+  const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+  stripe.rotation.x = Math.PI/2;
+  stripe.position.set(x, height + 0.16, z);
+  scene.add(stripe);
+
+  const p = {x, z, radius, topY, mesh};
+  platforms.push(p);
+  return p;
+}
+
+// central big pillar - plenty of room for several players
+const CENTER = addPlatform(0, 0, 9.5, 6, 0x6B7A99);
+
+// ring of smaller pillars around it, with real gaps between them
+const RING_COUNT = 8;
+const RING_RADIUS = 20;
+const pillarColors = [0xFF6B6B,0x4ECDC4,0xFFD23F,0xA78BFA,0xFF9F1C,0x06D6A0,0xFF6FB1,0x5AC8FA];
+for(let i=0;i<RING_COUNT;i++){
+  const a = (i/RING_COUNT) * Math.PI*2;
+  const r = RING_RADIUS + (i%2===0 ? 0 : 3.2);
+  const x = Math.cos(a)*r, z = Math.sin(a)*r;
+  const rad = 3.4 + (i%3)*0.6;
+  const h = 5.5 + (i%2)*2.2;
+  addPlatform(x, z, rad, h, pillarColors[i%pillarColors.length]);
+}
+// a couple of small mid-ring stepping stones for extra routes
+addPlatform(11.5, 11.5, 2.1, 5.0, 0xFFD23F);
+addPlatform(-11.5, 11.5, 2.1, 4.2, 0x06D6A0);
+addPlatform(11.5, -11.5, 2.1, 4.6, 0xFF6B6B);
+addPlatform(-11.5, -11.5, 2.1, 5.3, 0xA78BFA);
+
+/* ---------------- Fall particle effect ---------------- */
+function spawnFallBurst(pos, color){
+  const group = new THREE.Group();
+  const n = 14;
+  const parts = [];
+  for(let i=0;i<n;i++){
+    const g = new THREE.IcosahedronGeometry(0.28, 0);
+    const m = new THREE.MeshStandardMaterial({color, emissive:color, emissiveIntensity:0.3});
+    const mesh = new THREE.Mesh(g,m);
+    mesh.position.copy(pos);
+    const dir = new THREE.Vector3((Math.random()-0.5), Math.random()*0.6+0.2, (Math.random()-0.5)).normalize();
+    parts.push({mesh, vel: dir.multiplyScalar(6+Math.random()*4)});
+    group.add(mesh);
+  }
+  scene.add(group);
+  let life = 0;
+  function anim(dt){
+    life += dt;
+    parts.forEach(p=>{
+      p.vel.y -= 18*dt;
+      p.mesh.position.addScaledVector(p.vel, dt);
+      p.mesh.rotation.x += dt*5; p.mesh.rotation.y += dt*4;
+      p.mesh.material.opacity = Math.max(0, 1-life/0.9);
+      p.mesh.material.transparent = true;
+    });
+    if(life < 0.9) requestAnimationFrame(()=>anim(1/60));
+    else scene.remove(group);
+  }
+  anim(1/60);
+}
+
+function spawnHitSpark(pos, color){
+  const geo = new THREE.RingGeometry(0.1,0.4,16);
+  const mat = new THREE.MeshBasicMaterial({color, transparent:true, side:THREE.DoubleSide});
+  const ring = new THREE.Mesh(geo, mat);
+  ring.position.copy(pos);
+  ring.lookAt(camera.position);
+  scene.add(ring);
+  let t=0;
+  function anim(dt){
+    t+=dt;
+    ring.scale.setScalar(1 + t*6);
+    mat.opacity = Math.max(0, 1 - t*2.2);
+    ring.lookAt(camera.position);
+    if(t<0.45) requestAnimationFrame(()=>anim(1/60));
+    else scene.remove(ring);
+  }
+  anim(1/60);
+}
+
+/* ---------------- Player entity ---------------- */
+const GRAVITY = -34;
+const MOVE_SPEED = 9.5;
+const AIR_CONTROL = 0.55;
+const JUMP_SPEED = 12.5;
+const PLAYER_RADIUS = 0.55;
+const ATTACK_RANGE = 3.1;
+const ATTACK_ANGLE = Math.PI/2.1; // in front cone
+const ATTACK_COOLDOWN = 0.55;
+const KNOCKBACK_FORCE = 13;
+const KNOCKBACK_UP = 6.5;
+const HITSTUN = 0.35;
+
+function buildCharacterMesh(color){
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({color, roughness:0.6});
+  const accentMat = new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.5});
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.85,0.95,0.5), bodyMat);
+  torso.position.y = 1.0;
+  torso.castShadow = true;
+  g.add(torso);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42,16,16), accentMat);
+  head.position.y = 1.75;
+  head.castShadow = true;
+  g.add(head);
+
+  const eyeGeo = new THREE.SphereGeometry(0.06,8,8);
+  const eyeMat = new THREE.MeshStandardMaterial({color:0x1F2740});
+  const eyeL = new THREE.Mesh(eyeGeo, eyeMat); eyeL.position.set(0.16,1.8,0.38); g.add(eyeL);
+  const eyeR = new THREE.Mesh(eyeGeo, eyeMat); eyeR.position.set(-0.16,1.8,0.38); g.add(eyeR);
+
+  const armGeo = new THREE.BoxGeometry(0.26,0.75,0.26);
+  const armL = new THREE.Mesh(armGeo, bodyMat); armL.position.set(0.58,1.0,0); armL.castShadow=true; g.add(armL);
+  const armR = new THREE.Mesh(armGeo, bodyMat); armR.position.set(-0.58,1.0,0); armR.castShadow=true; g.add(armR);
+
+  const legGeo = new THREE.BoxGeometry(0.32,0.65,0.32);
+  const legMat = new THREE.MeshStandardMaterial({color:0x2b2f45, roughness:0.7});
+  const legL = new THREE.Mesh(legGeo, legMat); legL.position.set(0.22,0.32,0); legL.castShadow=true; g.add(legL);
+  const legR = new THREE.Mesh(legGeo, legMat); legR.position.set(-0.22,0.32,0); legR.castShadow=true; g.add(legR);
+
+  g.userData.armL = armL; g.userData.armR = armR;
+  g.userData.legL = legL; g.userData.legR = legR;
+  g.userData.bodyMat = bodyMat;
+  return g;
+}
+
+function setPlayerColor(p, colorHex){
+  p.color = colorHex;
+  if(p.mesh.userData.bodyMat) p.mesh.userData.bodyMat.color.setHex(colorHex);
+}
+
+function makePlayer(name, color, isBot, isLocal){
+  const mesh = buildCharacterMesh(color);
+  scene.add(mesh);
+  return {
+    name, color, isBot, isLocal,
+    isRemote:false, netId:null, net:null, joinedAt:0,
+    mesh,
+    pos: new THREE.Vector3(),
+    vel: new THREE.Vector3(),
+    yaw: 0,
+    onGround: false,
+    alive: true,
+    hitstun: 0,
+    attackCooldown: 0,
+    attacking: 0, // anim timer
+    moveInput: {x:0,y:0},
+    wantJump: false,
+    wantAttack: false,
+    aiTimer: 0,
+    aiTarget: null,
+    walkPhase: 0,
+  };
+}
+
+const PLAYER_COLORS = {
+  local: 0xFF5C5C,
+  bots: [0x4D96FF, 0x6BCB77, 0xFFD93D, 0xB388FF]
+};
+const NET_COLOR_PALETTE = [0xFF5C5C,0x4D96FF,0x6BCB77,0xFFD93D,0xB388FF,0xFF9F1C,0x06D6A0,0xFF6FB1,0x5AC8FA];
+function colorForId(id){
+  let h = 0;
+  for(let i=0;i<id.length;i++){ h = (h*31 + id.charCodeAt(i)) >>> 0; }
+  return NET_COLOR_PALETTE[h % NET_COLOR_PALETTE.length];
+}
+
+const players = [];
+const local = makePlayer('YOU', PLAYER_COLORS.local, false, true);
+players.push(local);
+const BOT_NAMES = ['ボット1','ボット2','ボット3'];
+function addBots(){
+  BOT_NAMES.forEach((name,i)=>{
+    players.push(makePlayer(name, PLAYER_COLORS.bots[i], true, false));
+  });
+}
+
+/* ---------------- HUD alive chips ---------------- */
+const aliveListEl = document.getElementById('alive-list');
+function refreshAliveChips(){
+  aliveListEl.innerHTML = '';
+  players.forEach(p=>{
+    const chip = document.createElement('div');
+    chip.className = 'alive-chip' + (p.alive ? '' : ' dead');
+    chip.style.background = '#' + p.color.toString(16).padStart(6,'0');
+    aliveListEl.appendChild(chip);
+  });
+}
+refreshAliveChips();
+
+/* ---------------- Round management ---------------- */
+let roundNumber = 1;
+let roundActive = false;
+let roundEndTimer = 0;
+const roundLabel = document.getElementById('round-label');
+const banner = document.getElementById('banner');
+const bannerTitle = document.getElementById('banner-title');
+const bannerSub = document.getElementById('banner-sub');
+const countdownEl = document.getElementById('countdown');
+const youFellEl = document.getElementById('you-fell');
+
+function placePlayersAtStart(){
+  const resettable = players.filter(p=>!p.isRemote);
+  const n = resettable.length;
+  resettable.forEach((p,i)=>{
+    const a = (i/n)*Math.PI*2;
+    const r = 3.2;
+    p.pos.set(Math.cos(a)*r, CENTER.topY, Math.sin(a)*r);
+    p.vel.set(0,0,0);
+    p.yaw = a + Math.PI;
+    p.alive = true;
+    p.onGround = true;
+    p.hitstun = 0;
+    p.attackCooldown = 0;
+    p.mesh.visible = true;
+    p.mesh.scale.setScalar(1);
+    p.aiTarget = null;
+  });
+}
+
+function startRound(){
+  roundNumber++;
+  roundLabel.textContent = 'ROUND ' + roundNumber;
+  placePlayersAtStart();
+  roundActive = true;
+  banner.classList.remove('show');
+  youFellEl.classList.remove('show');
+  refreshAliveChips();
+}
+
+function endRoundWithWinner(winner){
+  roundActive = false;
+  bannerTitle.textContent = winner ? 'WINNER!' : 'DRAW!';
+  bannerSub.textContent = winner ? winner.name + ' の勝利!' : '全員脱落…';
+  banner.style.setProperty('--winner-color', winner ? ('#'+winner.color.toString(16).padStart(6,'0')) : '#ffffff');
+  banner.classList.add('show');
+  roundEndTimer = 3.2;
+  let cd = 3;
+  countdownEl.textContent = '次のラウンドまで ' + cd;
+  countdownEl.classList.add('show');
+  const iv = setInterval(()=>{
+    cd--;
+    if(cd<=0){ clearInterval(iv); countdownEl.classList.remove('show'); return; }
+    countdownEl.textContent = '次のラウンドまで ' + cd;
+  }, 1000);
+}
+
+function checkRoundOutcome(){
+  if(!roundActive) return;
+  if(players.length <= 1) return; // オンラインで自分しかいない間は判定しない
+  const alive = players.filter(p=>p.alive);
+  if(alive.length <= 1){
+    endRoundWithWinner(alive[0] || null);
+  }
+}
+
+/* ---------------- Networking (online mode via dedicated WebSocket relay server) ----------------
+   Connects to the Pillar Rumble relay server (Node.js + ws), which keeps players
+   grouped by room code and relays position/attack/host-start messages between them
+   in real time (no polling - the server pushes events as they happen). */
+const NET_SERVER_URL = 'wss://marvel-battle.onrender.com';
+
+const NET = {
+  enabled:false,
+  ws:null,
+  room:'LOBBY',
+  localId:null,
+  hostId:null,
+  remotes: new Map(),
+  joined:false,
+};
+
+function sanitizeRoomCode(s){
+  return (s||'').toString().trim().replace(/[\s\/\\'"]+/g,'').toUpperCase().slice(0,16) || 'LOBBY';
+}
+
+function getOrCreateRemote(id, data){
+  let p = NET.remotes.get(id);
+  if(!p){
+    const color = (typeof data.color === 'number') ? data.color : 0xAAAAAA;
+    p = makePlayer(data.name || '?', color, false, false);
+    p.isRemote = true;
+    p.netId = id;
+    p.net = {x:data.x||0, y:data.y||0, z:data.z||0, yaw:data.yaw||0, lastSeen:Date.now()};
+    p.pos.set(data.x||0, data.y||0, data.z||0);
+    p.yaw = data.yaw || 0;
+    p.alive = data.alive !== false;
+    NET.remotes.set(id, p);
+    players.push(p);
+    refreshAliveChips();
+  }
+  return p;
+}
+
+function removeRemote(id){
+  const p = NET.remotes.get(id);
+  if(!p) return;
+  scene.remove(p.mesh);
+  const idx = players.indexOf(p);
+  if(idx>=0) players.splice(idx,1);
+  NET.remotes.delete(id);
+  refreshAliveChips();
+}
+
+function netSendHit(targetId, dirX, dirZ){
+  if(NET.ws && NET.ws.readyState === WebSocket.OPEN){
+    NET.ws.send(JSON.stringify({ t:'hit', targetId, dirX, dirZ }));
+  }
+}
+
+function handleNetMessage(msg){
+  if(!msg || typeof msg.t !== 'string') return;
+  switch(msg.t){
+    case 'welcome': {
+      NET.joined = true;
+      NET.localId = msg.id;
+      NET.hostId = msg.hostId;
+      (msg.players || []).forEach(p=>{
+        if(p.id === NET.localId){
+          if(typeof p.color === 'number') setPlayerColor(local, p.color);
+          return;
+        }
+        getOrCreateRemote(p.id, p);
+      });
+      updateLobbyUI();
+      break;
+    }
+    case 'player_joined': {
+      getOrCreateRemote(msg.id, msg);
+      updateLobbyUI();
+      break;
+    }
+    case 'player_left': {
+      removeRemote(msg.id);
+      updateLobbyUI();
+      checkRoundOutcome();
+      break;
+    }
+    case 'host_changed': {
+      NET.hostId = msg.hostId;
+      updateLobbyUI();
+      break;
+    }
+    case 'state': {
+      const p = NET.remotes.get(msg.id);
+      if(!p) return;
+      p.net.x = msg.x; p.net.y = msg.y; p.net.z = msg.z; p.net.yaw = msg.yaw;
+      p.net.lastSeen = Date.now();
+      const wasAlive = p.alive;
+      p.alive = !!msg.alive;
+      if(p.alive && !wasAlive){ p.mesh.visible = true; p.mesh.scale.setScalar(1); }
+      if(msg.attacking && p.attacking <= 0) p.attacking = 0.28;
+      checkRoundOutcome();
+      break;
+    }
+    case 'hit': {
+      local.vel.x += msg.dirX * KNOCKBACK_FORCE;
+      local.vel.z += msg.dirZ * KNOCKBACK_FORCE;
+      local.vel.y = KNOCKBACK_UP;
+      local.hitstun = HITSTUN;
+      local.onGround = false;
+      spawnHitSpark(new THREE.Vector3(local.pos.x, local.pos.y+1.1, local.pos.z), 0xFFFFFF);
+      break;
+    }
+    case 'start_countdown': {
+      beginLobbyCountdown(msg.ts);
+      break;
+    }
+  }
+}
+
+function startNetworking(roomCodeRaw){
+  NET.enabled = true;
+  NET.room = sanitizeRoomCode(roomCodeRaw);
+
+  const startBtn = document.getElementById('lobby-start-btn');
+  startBtn.style.display = 'block';
+  startBtn.disabled = true;
+  startBtn.textContent = 'サーバーに接続中…';
+  document.getElementById('lobby-wait-msg').style.display = 'none';
+
+  let ws;
+  try{ ws = new WebSocket(NET_SERVER_URL); }
+  catch(e){
+    startBtn.textContent = 'サーバーに接続できませんでした';
+    return;
+  }
+  NET.ws = ws;
+
+  ws.addEventListener('open', ()=>{
+    ws.send(JSON.stringify({ t:'join', room:NET.room, name:local.name }));
+  });
+  ws.addEventListener('message', (ev)=>{
+    let msg;
+    try{ msg = JSON.parse(ev.data); }catch(e){ return; }
+    handleNetMessage(msg);
+  });
+  ws.addEventListener('close', ()=>{
+    if(!NET.joined){
+      startBtn.style.display = 'none';
+      const waitMsg = document.getElementById('lobby-wait-msg');
+      waitMsg.style.display = 'block';
+      waitMsg.textContent = 'サーバーに接続できませんでした。無料サーバーはスリープから起きるのに時間がかかることがあるので、少し待ってから画面を再読み込みしてみてください。';
+    }
+  });
+
+  // push our own transform to the server at a steady rate; the server relays
+  // it to everyone else in the room the moment it arrives (no polling delay)
+  setInterval(()=>{
+    if(ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({
+        t:'state',
+        x: local.pos.x, y: local.pos.y, z: local.pos.z, yaw: local.yaw,
+        alive: local.alive, attacking: local.attacking > 0
+      }));
+    }
+  }, 100);
+
+  const chip = document.getElementById('net-chip');
+  chip.style.display = 'flex';
+  chip.textContent = '🌐 ' + NET.room;
+}
+
+/* ---------------- Lobby / waiting room (host-gated synchronized start) ---------------- */
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function updateLobbyUI(){
+  const hostId = NET.hostId;
+  const isHost = hostId === NET.localId;
+  const entries = [{id:NET.localId, name:local.name, color:local.color}];
+  NET.remotes.forEach((p,id)=> entries.push({id, name:p.name, color:p.color}));
+  entries.sort((a,b)=> (a.id===hostId?-1:0) - (b.id===hostId?-1:0));
+
+  const listEl = document.getElementById('lobby-players');
+  listEl.innerHTML = entries.map(e=>
+    `<div class="lobby-player-row"><span class="lobby-dot" style="background:#${e.color.toString(16).padStart(6,'0')}"></span>`+
+    `<span>${escapeHtml(e.name)}${e.id===hostId ? ' 👑ホスト' : ''}</span></div>`
+  ).join('');
+  document.getElementById('lobby-count').textContent = entries.length + '人参加中';
+
+  const startBtn = document.getElementById('lobby-start-btn');
+  const waitMsg = document.getElementById('lobby-wait-msg');
+  if(isHost){
+    startBtn.style.display = 'block';
+    waitMsg.style.display = 'none';
+    if(!startBtn.dataset.clicked){
+      startBtn.disabled = entries.length < 2;
+      startBtn.textContent = entries.length < 2 ? 'あと1人以上待っています…' : 'ゲームを開始する';
+    }
+  } else {
+    startBtn.style.display = 'none';
+    waitMsg.style.display = 'block';
+    const hostEntry = entries.find(e=>e.id===hostId);
+    waitMsg.textContent = (hostEntry ? hostEntry.name : 'ホスト') + ' の開始を待っています…';
+  }
+}
+
+function beginLobbyCountdown(signalTs){
+  document.getElementById('lobby-idle').style.display = 'none';
+  const cdEl = document.getElementById('lobby-countdown');
+  cdEl.style.display = 'block';
+  const DURATION = 10000;
+  function tick(){
+    const remain = DURATION - (Date.now() - signalTs);
+    if(remain <= 0){
+      document.getElementById('lobby-overlay').style.display = 'none';
+      gameStarted = true;
+      roundNumber = 0;
+      startRound();
+      return;
+    }
+    cdEl.textContent = Math.ceil(remain/1000) + '秒後にスタート!';
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+document.getElementById('lobby-start-btn').addEventListener('click', (e)=>{
+  e.target.dataset.clicked = '1';
+  e.target.disabled = true;
+  e.target.textContent = '開始しています…';
+  if(NET.ws && NET.ws.readyState === WebSocket.OPEN){
+    NET.ws.send(JSON.stringify({ t:'start' }));
+  }
+});
+
+/* ---------------- Input: joystick (fixed position, PointerEvent based) ---------------- */
+const stickZone = document.getElementById('stick-zone');
+const joyBase = document.getElementById('joy-base');
+const joyKnob = document.getElementById('joy-knob');
+const JOY_RADIUS = 55;
+const JOY_DEADZONE = 0.08;
+let joyPointerId = null;
+let joyCenter = {x:0, y:0};
+
+function updateJoyCenter(){
+  const r = joyBase.getBoundingClientRect();
+  joyCenter.x = r.left + r.width/2;
+  joyCenter.y = r.top + r.height/2;
+}
+updateJoyCenter();
+window.addEventListener('resize', updateJoyCenter);
+
+function joySetKnob(kx, ky){
+  joyKnob.style.left = (joyBase.offsetWidth/2 - joyKnob.offsetWidth/2 + kx) + 'px';
+  joyKnob.style.top = (joyBase.offsetHeight/2 - joyKnob.offsetHeight/2 + ky) + 'px';
+}
+
+function joyApply(clientX, clientY){
+  const dx = clientX - joyCenter.x, dy = clientY - joyCenter.y;
+  const dist = Math.hypot(dx,dy);
+  const clamped = Math.min(JOY_RADIUS, dist);
+  const ang = Math.atan2(dy,dx);
+  const kx = Math.cos(ang)*clamped, ky = Math.sin(ang)*clamped;
+  joySetKnob(kx, ky);
+  let nx = kx / JOY_RADIUS, ny = -ky / JOY_RADIUS; // forward = up on screen
+  if(Math.hypot(nx,ny) < JOY_DEADZONE){ nx = 0; ny = 0; }
+  local.moveInput.x = nx;
+  local.moveInput.y = ny;
+}
+
+function joyReset(){
+  joyPointerId = null;
+  joyBase.classList.remove('active');
+  joySetKnob(0,0);
+  local.moveInput.x = 0; local.moveInput.y = 0;
+}
+joyReset();
+
+stickZone.addEventListener('pointerdown', e=>{
+  if(joyPointerId !== null) return;
+  joyPointerId = e.pointerId;
+  updateJoyCenter();
+  joyBase.classList.add('active');
+  stickZone.setPointerCapture(e.pointerId);
+  joyApply(e.clientX, e.clientY);
+  e.preventDefault();
+});
+stickZone.addEventListener('pointermove', e=>{
+  if(e.pointerId !== joyPointerId) return;
+  joyApply(e.clientX, e.clientY);
+  e.preventDefault();
+});
+function stickPointerEnd(e){
+  if(e.pointerId !== joyPointerId) return;
+  joyReset();
+}
+stickZone.addEventListener('pointerup', stickPointerEnd);
+stickZone.addEventListener('pointercancel', stickPointerEnd);
+
+// keyboard support (desktop convenience)
+const keys = {};
+window.addEventListener('keydown', e=>{ keys[e.key.toLowerCase()]=true; if(e.key===' ') local.wantJump = true; });
+window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; });
+function keyboardVector(){
+  let x=0,y=0;
+  if(keys['a']||keys['arrowleft']) x -= 1;
+  if(keys['d']||keys['arrowright']) x += 1;
+  if(keys['w']||keys['arrowup']) y += 1;
+  if(keys['s']||keys['arrowdown']) y -= 1;
+  return {x,y};
+}
+
+/* ---------------- Input: buttons ---------------- */
+const btnJump = document.getElementById('btn-jump');
+const btnAttack = document.getElementById('btn-attack');
+
+function bindPressButton(el, onDown){
+  el.addEventListener('touchstart', e=>{ e.preventDefault(); el.classList.add('pressed'); onDown(); }, {passive:false});
+  el.addEventListener('touchend', e=>{ e.preventDefault(); el.classList.remove('pressed'); }, {passive:false});
+  el.addEventListener('mousedown', e=>{ el.classList.add('pressed'); onDown(); });
+  el.addEventListener('mouseup', ()=>{ el.classList.remove('pressed'); });
+  el.addEventListener('mouseleave', ()=>{ el.classList.remove('pressed'); });
+}
+bindPressButton(btnJump, ()=>{ local.wantJump = true; });
+bindPressButton(btnAttack, ()=>{ local.wantAttack = true; });
+
+/* ---------------- Camera follow state (yaw/pitch driven by screen swipe) ---------------- */
+let camYaw = Math.PI;   // current camera orbit angle (radians)
+let camPitch = 0.46;    // current camera orbit pitch (radians); larger = looking down more
+const CAM_PITCH_MIN = 0.08;
+const CAM_PITCH_MAX = 1.05;
+const CAM_DIST = 8.5;
+const CAM_LOOK_HEIGHT = 1.5;
+const LOOK_SENSITIVITY_X = 0.006;
+const LOOK_SENSITIVITY_Y = 0.005;
+const camPos = new THREE.Vector3();
+const camLook = new THREE.Vector3();
+camPos.set(0, CENTER.topY+8, 12);
+camera.position.copy(camPos);
+
+/* ---------------- Input: camera look via screen swipe (anywhere except stick/buttons) ---------------- */
+const lookPointers = new Map();
+let activeLookId = null;
+
+function isControlElement(el){
+  return !!(el && el.closest && (el.closest('#stick-zone') || el.closest('.action-btn')));
+}
+
+window.addEventListener('pointerdown', e=>{
+  if(activeLookId !== null) return;
+  if(isControlElement(e.target)) return;
+  activeLookId = e.pointerId;
+  lookPointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+});
+window.addEventListener('pointermove', e=>{
+  if(e.pointerId !== activeLookId) return;
+  const prev = lookPointers.get(e.pointerId);
+  if(!prev) return;
+  const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  camYaw -= dx * LOOK_SENSITIVITY_X;
+  camPitch = THREE.MathUtils.clamp(camPitch + dy * LOOK_SENSITIVITY_Y, CAM_PITCH_MIN, CAM_PITCH_MAX);
+  lookPointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+});
+function endLook(e){
+  if(e.pointerId === activeLookId) activeLookId = null;
+  lookPointers.delete(e.pointerId);
+}
+window.addEventListener('pointerup', endLook);
+window.addEventListener('pointercancel', endLook);
+
+/* ---------------- Physics helpers ---------------- */
+function resolvePlatformCollision(p, prevY){
+  let grounded = false;
+  let groundTopY = -Infinity;
+  if(prevY === undefined) prevY = p.pos.y;
+
+  for(const pl of platforms){
+    const dx = p.pos.x - pl.x, dz = p.pos.z - pl.z;
+    const distXZ = Math.hypot(dx, dz);
+    const combinedR = pl.radius + PLAYER_RADIUS;
+
+    // standing on top? only land when we actually crossed the surface this frame
+    // (or are already resting essentially on it) - not when merely "close" -
+    // otherwise falls get cut short and land earlier than they physically should.
+    if(distXZ < pl.radius){
+      const crossedDown = prevY >= pl.topY - 0.02 && p.pos.y <= pl.topY;
+      const restingOnTop = Math.abs(p.pos.y - pl.topY) < 0.02 && p.vel.y <= 0.01;
+      if((crossedDown || restingOnTop) && p.vel.y <= 0.01){
+        if(pl.topY > groundTopY){ groundTopY = pl.topY; grounded = true; }
+      }
+    }
+
+    // side collision (push out) only when clearly below the surface - keep a
+    // gap from the "standing on top" check above so the two never fight over
+    // a player right at the edge (that fight is what caused edge bounces).
+    if(distXZ < combinedR && distXZ > 0.0001 && p.pos.y < pl.topY - 0.3){
+      const push = (combinedR - distXZ);
+      const nx = dx/distXZ, nz = dz/distXZ;
+      p.pos.x += nx*push;
+      p.pos.z += nz*push;
+      if(p.vel.x*nx + p.vel.z*nz < 0){
+        // cancel inward velocity component
+        const vDotN = p.vel.x*nx + p.vel.z*nz;
+        p.vel.x -= vDotN*nx;
+        p.vel.z -= vDotN*nz;
+      }
+    }
+  }
+
+  if(grounded){
+    p.pos.y = groundTopY;
+    p.vel.y = 0;
+    p.onGround = true;
+  } else {
+    p.onGround = false;
+  }
+}
+
+/* ---------------- Attack logic ---------------- */
+function tryAttack(attacker){
+  if(attacker.attackCooldown > 0 || !attacker.alive) return;
+  attacker.attackCooldown = ATTACK_COOLDOWN;
+  attacker.attacking = 0.28;
+
+  const fwd = new THREE.Vector3(Math.sin(attacker.yaw), 0, Math.cos(attacker.yaw));
+  for(const target of players){
+    if(target === attacker || !target.alive) continue;
+    const toTarget = new THREE.Vector3(target.pos.x-attacker.pos.x, 0, target.pos.z-attacker.pos.z);
+    const dist = toTarget.length();
+    if(dist > ATTACK_RANGE || dist < 0.0001) continue;
+    toTarget.normalize();
+    const angle = Math.acos(THREE.MathUtils.clamp(fwd.dot(toTarget), -1, 1));
+    if(angle > ATTACK_ANGLE/2) continue;
+
+    const dir = toTarget;
+    if(target.isRemote){
+      // target's own client is authoritative for its physics - relay the hit
+      netSendHit(target.netId, dir.x, dir.z);
+    } else {
+      target.vel.x += dir.x * KNOCKBACK_FORCE;
+      target.vel.z += dir.z * KNOCKBACK_FORCE;
+      target.vel.y = KNOCKBACK_UP;
+      target.hitstun = HITSTUN;
+      target.onGround = false;
+    }
+    spawnHitSpark(new THREE.Vector3(target.pos.x, target.pos.y+1.1, target.pos.z), 0xFFFFFF);
+  }
+}
+
+/* ---------------- AI (bots) ---------------- */
+function updateBotAI(p, dt){
+  p.aiTimer -= dt;
+  if(p.aiTimer <= 0 || !p.aiTarget){
+    // pick a new random platform target (bias toward ones near current pos or center)
+    const options = platforms;
+    p.aiTarget = options[Math.floor(Math.random()*options.length)];
+    p.aiTimer = 1.4 + Math.random()*1.8;
+  }
+  const tx = p.aiTarget.x, tz = p.aiTarget.z;
+  const dx = tx - p.pos.x, dz = tz - p.pos.z;
+  const dist = Math.hypot(dx,dz);
+
+  if(dist > 0.6){
+    // move dir in world space -> convert to a "moveInput" relative to nothing; bots move directly in world space
+    p.moveInput.worldDir = {x: dx/dist, z: dz/dist};
+  } else {
+    p.moveInput.worldDir = null;
+  }
+
+  // jump sometimes when needing to cross a gap or randomly
+  if(p.onGround && Math.random() < 0.02){
+    p.wantJump = true;
+  }
+  // near an edge and moving -> jump to cross gap
+  if(p.onGround){
+    const onCurrentPlatform = platforms.find(pl=>{
+      const d = Math.hypot(p.pos.x-pl.x, p.pos.z-pl.z);
+      return d < pl.radius && Math.abs(p.pos.y-pl.topY) < 0.5;
+    });
+    if(onCurrentPlatform){
+      const d = Math.hypot(p.pos.x-onCurrentPlatform.x, p.pos.z-onCurrentPlatform.z);
+      if(d > onCurrentPlatform.radius - 1.2 && dist > 1){
+        p.wantJump = true;
+      }
+    }
+  }
+
+  // attack nearby alive players
+  for(const other of players){
+    if(other===p || !other.alive) continue;
+    const d = Math.hypot(other.pos.x-p.pos.x, other.pos.z-p.pos.z);
+    if(d < ATTACK_RANGE*0.9){
+      p.yaw = Math.atan2(other.pos.x-p.pos.x, other.pos.z-p.pos.z);
+      if(Math.random() < 0.05) p.wantAttack = true;
+    }
+  }
+}
+
+/* ---------------- Main update ---------------- */
+const clock = new THREE.Clock();
+let gameStarted = false;
+
+function updateRemoteVisual(p, dt){
+  if(!p.net) return;
+  const k = Math.min(1, dt*10);
+  const dxMove = p.net.x - p.pos.x, dzMove = p.net.z - p.pos.z;
+  p.pos.x += dxMove * k;
+  p.pos.y += (p.net.y - p.pos.y) * k;
+  p.pos.z += dzMove * k;
+
+  let dyaw = p.net.yaw - p.yaw;
+  while(dyaw > Math.PI) dyaw -= Math.PI*2;
+  while(dyaw < -Math.PI) dyaw += Math.PI*2;
+  p.yaw += dyaw * k;
+
+  p.mesh.visible = p.alive;
+  p.mesh.position.copy(p.pos);
+  p.mesh.rotation.y = p.yaw;
+
+  const spd = Math.hypot(dxMove, dzMove);
+  if(spd > 0.02){
+    p.walkPhase += dt*10;
+    const swing = Math.sin(p.walkPhase)*0.5;
+    p.mesh.userData.legL.rotation.x = swing;
+    p.mesh.userData.legR.rotation.x = -swing;
+    if(p.attacking <= 0){
+      p.mesh.userData.armL.rotation.x = -swing*0.7;
+      p.mesh.userData.armR.rotation.x = swing*0.7;
+    }
+  } else {
+    p.mesh.userData.legL.rotation.x *= 0.8;
+    p.mesh.userData.legR.rotation.x *= 0.8;
+  }
+  if(p.attacking > 0){
+    p.attacking -= dt;
+    const t = 1 - Math.max(0,p.attacking)/0.28;
+    const swing = Math.sin(t*Math.PI) * 1.9;
+    p.mesh.userData.armR.rotation.x = -swing;
+    p.mesh.userData.armL.rotation.x = -swing*0.3;
+  }
+}
+
+function updatePlayer(p, dt){
+  if(p.isRemote){
+    updateRemoteVisual(p, dt);
+    return;
+  }
+  if(!p.alive){
+    return;
+  }
+
+  if(p.isBot){
+    updateBotAI(p, dt);
+  }
+
+  // hitstun countdown (limited control while stunned)
+  if(p.hitstun > 0) p.hitstun -= dt;
+
+  // ----- compute desired horizontal move direction -----
+  let moveX = 0, moveZ = 0;
+  const controlFactor = p.onGround ? 1 : AIR_CONTROL;
+
+  if(p.isLocal){
+    const kb = keyboardVector();
+    let ix = local.moveInput.x + kb.x;
+    let iy = local.moveInput.y + kb.y;
+    const mag = Math.hypot(ix,iy);
+    if(mag > 1){ ix/=mag; iy/=mag; }
+    if(mag > 0.05){
+      const camForward = new THREE.Vector3(-Math.sin(camYaw), 0, -Math.cos(camYaw));
+      const camRight = new THREE.Vector3(Math.cos(camYaw), 0, -Math.sin(camYaw));
+      const dir = new THREE.Vector3();
+      dir.addScaledVector(camForward, iy);
+      dir.addScaledVector(camRight, ix);
+      if(dir.lengthSq() > 0.0001){
+        dir.normalize();
+        moveX = dir.x; moveZ = dir.z;
+        p.yaw = Math.atan2(dir.x, dir.z);
+      }
+    }
+  } else {
+    if(p.moveInput.worldDir){
+      moveX = p.moveInput.worldDir.x;
+      moveZ = p.moveInput.worldDir.z;
+      p.yaw = Math.atan2(moveX, moveZ);
+    }
+  }
+
+  if(p.hitstun <= 0){
+    const targetVelX = moveX * MOVE_SPEED;
+    const targetVelZ = moveZ * MOVE_SPEED;
+    p.vel.x += (targetVelX - p.vel.x) * Math.min(1, controlFactor * dt * 16);
+    p.vel.z += (targetVelZ - p.vel.z) * Math.min(1, controlFactor * dt * 16);
+  } else {
+    // friction during hitstun
+    p.vel.x *= 0.98; p.vel.z *= 0.98;
+  }
+
+  // walk animation
+  const speed = Math.hypot(p.vel.x, p.vel.z);
+  if(p.onGround && speed > 0.5){
+    p.walkPhase += dt * speed * 0.9;
+    const swing = Math.sin(p.walkPhase) * 0.55;
+    p.mesh.userData.legL.rotation.x = swing;
+    p.mesh.userData.legR.rotation.x = -swing;
+    if(!p.attacking){
+      p.mesh.userData.armL.rotation.x = -swing*0.7;
+      p.mesh.userData.armR.rotation.x = swing*0.7;
+    }
+  } else {
+    p.mesh.userData.legL.rotation.x *= 0.8;
+    p.mesh.userData.legR.rotation.x *= 0.8;
+    if(!p.attacking){
+      p.mesh.userData.armL.rotation.x *= 0.8;
+      p.mesh.userData.armR.rotation.x *= 0.8;
+    }
+  }
+
+  // jump
+  if(p.wantJump){
+    p.wantJump = false;
+    if(p.onGround && p.hitstun <= 0){
+      p.vel.y = JUMP_SPEED;
+      p.onGround = false;
+    }
+  }
+
+  // attack
+  if(p.wantAttack){
+    p.wantAttack = false;
+    if(p.hitstun <= 0) tryAttack(p);
+  }
+  if(p.attackCooldown > 0) p.attackCooldown -= dt;
+  if(p.attacking > 0){
+    p.attacking -= dt;
+    const t = 1 - Math.max(0,p.attacking)/0.28;
+    const swing = Math.sin(t*Math.PI) * 1.9;
+    p.mesh.userData.armR.rotation.x = -swing;
+    p.mesh.userData.armL.rotation.x = -swing*0.3;
+  }
+
+  // gravity
+  p.vel.y += GRAVITY * dt;
+  p.vel.y = Math.max(p.vel.y, -40);
+
+  // integrate
+  const prevY = p.pos.y;
+  p.pos.x += p.vel.x * dt;
+  p.pos.y += p.vel.y * dt;
+  p.pos.z += p.vel.z * dt;
+
+  // collide with platforms
+  resolvePlatformCollision(p, prevY);
+
+  // update mesh
+  p.mesh.position.copy(p.pos);
+  p.mesh.rotation.y = p.yaw;
+
+  // fell off?
+  if(p.pos.y < FALL_Y){
+    p.alive = false;
+    p.mesh.visible = false;
+    spawnFallBurst(new THREE.Vector3(p.pos.x, Math.max(p.pos.y,VOID_Y+2), p.pos.z), p.color);
+    if(p.isLocal){
+      youFellEl.classList.add('show');
+    }
+    refreshAliveChips();
+    checkRoundOutcome();
+  }
+}
+
+function updateCamera(dt){
+  // camYaw / camPitch are set directly by the screen-swipe input above
+  const horizDist = CAM_DIST * Math.cos(camPitch);
+  const height = CAM_DIST * Math.sin(camPitch);
+
+  const back = new THREE.Vector3(Math.sin(camYaw)*horizDist, height, Math.cos(camYaw)*horizDist);
+  const desired = new THREE.Vector3(local.pos.x, local.pos.y, local.pos.z).add(back);
+
+  camPos.lerp(desired, Math.min(1, dt*10));
+  camera.position.copy(camPos);
+
+  camLook.lerp(new THREE.Vector3(local.pos.x, local.pos.y + CAM_LOOK_HEIGHT, local.pos.z), Math.min(1, dt*10));
+  camera.lookAt(camLook);
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 1/30);
+  if(!gameStarted) { renderer.render(scene, camera); return; }
+
+  players.forEach(p=>updatePlayer(p, dt));
+  updateCamera(dt);
+
+  if(!roundActive){
+    roundEndTimer -= dt;
+    if(roundEndTimer <= 0){
+      startRound();
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* ---------------- Start flow ---------------- */
+function beginGame(online){
+  const nameVal = document.getElementById('name-input').value.trim();
+  local.name = nameVal ? nameVal.slice(0,10) : ('プレイヤー' + Math.floor(Math.random()*900+100));
+
+  document.getElementById('start-overlay').style.display = 'none';
+
+  if(online){
+    const roomVal = document.getElementById('room-input').value;
+    startNetworking(roomVal);
+    document.getElementById('net-note').textContent =
+      'オンライン対戦中(ルーム: ' + NET.room + ')。専用サーバー経由でリアルタイムに対戦相手と同期しています。なまえ・色・位置は同じルームの人に共有されます。';
+    document.getElementById('lobby-room-label').textContent = 'ルーム: ' + NET.room;
+    document.getElementById('lobby-overlay').style.display = 'flex';
+  } else {
+    addBots();
+    refreshAliveChips();
+    document.getElementById('net-note').textContent =
+      '現在はこの端末内でボットと対戦する練習モードです。';
+    gameStarted = true;
+    roundNumber = 0;
+    startRound();
+  }
+}
+document.getElementById('start-btn-online').addEventListener('click', ()=>beginGame(true));
+document.getElementById('start-btn-offline').addEventListener('click', ()=>beginGame(false));
+
+animate();
+
+})();
+</script>
+</body>
+</html>
