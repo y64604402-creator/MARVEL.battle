@@ -259,11 +259,10 @@ wss.on('connection', (ws) => {
       }
       case 'action': {
         // 攻撃・スキル発動の見た目を再現するための通知。ダメージは含まず、
-        // 部屋の他の全員へそのまま中継するだけ。
-        broadcast(room, {
-          t: 'action', id: playerId, kind: msg.kind,
-          x: msg.x, y: msg.y, z: msg.z, yaw: msg.yaw, pitch: msg.pitch
-        }, playerId);
+        // 部屋の他の全員へそのまま中継するだけ。技によって追加のフィールド
+        // (テレポートの目的地、起爆位置など)が乗ってくるので、決め打ちの
+        // フィールドだけでなく、メッセージ全体をそのまま転送する。
+        broadcast(room, Object.assign({}, msg, { t: 'action', id: playerId }), playerId);
         break;
       }
       case 'hit': {
